@@ -11,8 +11,6 @@ export const getImportMapBaseDir = (payloadConfigPath: string) => {
     true,
   )
 
-  console.log('12323')
-
   let baseDir: null | string = null
 
   const visit = (
@@ -66,5 +64,5 @@ export const getImportMapBaseDir = (payloadConfigPath: string) => {
     }
   }
 
-  return baseDir
+  return baseDir!
 }

@@ -1,16 +1,13 @@
+import type * as vscode from 'vscode'
+
 import path from 'path'
 import ts from 'typescript'
-import * as vscode from 'vscode'
 
+import { generateCompletions } from './generateCompletions'
 import { getImportMapBaseDir } from './getImportMapBaseDir'
 
 export class PayloadComponentPathsCompletionProvider implements vscode.CompletionItemProvider {
-  provideCompletionItems(
-    document: vscode.TextDocument,
-    position: vscode.Position,
-    token: vscode.CancellationToken,
-    context: vscode.CompletionContext,
-  ) {
+  provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
     if (document.languageId !== 'typescript') {
       return null
     }
@@ -58,30 +55,81 @@ export class PayloadComponentPathsCompletionProvider implements vscode.Completio
       }
     }
 
-    if (payloadConfigPath) {
-      getImportMapBaseDir(payloadConfigPath)
+    if (!payloadConfigPath) {
+      return null
     }
 
-    const visitNode = (node: ts.Node) => {
-      if (ts.isCallExpression(node) && node.expression.getText() === 'componentPath') {
-        const args = node.arguments
+    const importMapBaseDir = getImportMapBaseDir(payloadConfigPath)
 
-        const firstArg = args[0]
-        if (!firstArg) {
+    const visitNode = (
+      node: ts.Node,
+      context: {
+        inside?: 'admin' | 'components' | 'Field'
+      } = {},
+    ) => {
+      if (ts.isPropertyAssignment(node)) {
+        if (node.name.getText() === 'admin') {
+          ts.forEachChild(node.initializer, (node) => visitNode(node, { inside: 'admin' }))
+
           return
         }
 
-        if (ts.isStringLiteral(firstArg)) {
-          const firstArgStart = firstArg.getStart()
-          const firstArgEnd = firstArg.getEnd()
-
-          if (positionOffset >= firstArgStart && positionOffset <= firstArgEnd) {
-            suggestions.push(new vscode.CompletionItem('HomePage', vscode.CompletionItemKind.Text))
-          }
+        if (node.name.getText() === 'components' && context.inside === 'admin') {
+          ts.forEachChild(node.initializer, (node) => visitNode(node, { inside: 'components' }))
+          return
         }
       }
 
-      ts.forEachChild(node, visitNode)
+      if (ts.isStringLiteral(node) && context.inside === 'components') {
+        console.log('node')
+        if (positionOffset >= node.getStart() && positionOffset <= node.getEnd()) {
+          const completions = generateCompletions(
+            node.text,
+            importMapBaseDir,
+            path.dirname(tsconfigPath),
+            paths ?? {},
+          )
+
+          for (let i = 0; i < completions.length; i++) {
+            const completion = completions[i]
+            suggestions.push(completion)
+          }
+          return
+        }
+      }
+
+      ts.forEachChild(node, (child) => visitNode(child, context))
+
+      // if (ts.isCallExpression(node) && node.expression.getText() === 'componentPath') {
+      //   const args = node.arguments
+
+      //   const firstArg = args[0]
+
+      //   if (!firstArg) {
+      //     return
+      //   }
+
+      //   if (ts.isStringLiteral(firstArg)) {
+      //     const firstArgStart = firstArg.getStart()
+      //     const firstArgEnd = firstArg.getEnd()
+
+      //     if (positionOffset >= firstArgStart && positionOffset <= firstArgEnd) {
+      //       const completions = generateCompletions(
+      //         firstArg.text,
+      //         importMapBaseDir,
+      //         path.dirname(tsconfigPath),
+      //         paths ?? {},
+      //       )
+
+      //       for (let i = 0; i < completions.length; i++) {
+      //         const completion = completions[i]
+      //         suggestions.push(completion)
+      //       }
+
+      //       return
+      //     }
+      //   }
+      // }
     }
 
     visitNode(sourceCode)
